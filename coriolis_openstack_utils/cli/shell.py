@@ -63,7 +63,8 @@ class CoriolisOpenStackUtilsApp(app.App):
     def run(self, argv):
         # display usage if no args provided:
         print("argv: %s" % argv)
-        print("CONF %s" % CONF)
+        for key, val in CONF.iteritems():
+            print("CONF key:%s, val%s" % (key, val))
         if not argv:
             self.stderr.write(self.parser.format_usage())
             return 1
