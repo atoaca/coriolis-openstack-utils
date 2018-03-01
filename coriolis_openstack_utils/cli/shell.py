@@ -16,6 +16,7 @@ from coriolis_openstack_utils import constants
 
 
 CONF = conf.CONF
+LOG = logging.getLogger(__name__)
 
 
 class CoriolisOpenStackUtilsApp(app.App):
@@ -68,6 +69,7 @@ class CoriolisOpenStackUtilsApp(app.App):
         if not argv:
             self.stderr.write(self.parser.format_usage())
             return 1
+        CONF.log_opt_values(LOG, logging.DEBUG)
         return super(CoriolisOpenStackUtilsApp, self).run(argv)
 
 
