@@ -66,6 +66,7 @@ class CreateMigrations(lister.Lister):
             project=constants.PROJECT_NAME,
             version=constants.PROJECT_VERSION)
 
+        print(str(args.conf_file))
         # instantiate all clients:
         coriolis = conf.get_coriolis_client()
         source_client = conf.get_source_openstack_client()
