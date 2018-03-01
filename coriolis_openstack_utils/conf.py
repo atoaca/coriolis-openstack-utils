@@ -144,7 +144,7 @@ def get_conn_info_for_group(group_name):
         if confgroup.cinder_database_connection:
             conn_info["cinder_database_connection"] = (
                 confgroup.cinder_database_connection)
-
+    print("Connection Information %s" % conn_info)
     return conn_info
 
 
