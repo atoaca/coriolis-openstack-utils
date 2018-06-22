@@ -11,6 +11,8 @@ from oslo_log import log as logging
 from coriolis_openstack_utils import conf
 from coriolis_openstack_utils import instances
 from coriolis_openstack_utils import security_groups
+from coriolis_openstack_utils import subnets
+from coriolis_openstack_utils import networks
 from coriolis_openstack_utils import openstack_client
 from coriolis_openstack_utils import utils
 
@@ -23,6 +25,7 @@ ACTION_TYPE_CHECK_CREATE_DESTINATION_ENDPOINT = "create_destination_endpoint"
 ACTION_TYPE_CHECK_CREATE_TENANT = "create_tenant"
 ACTION_TYPE_CHECK_CREATE_MIGRATION = "create_migration"
 ACTION_TYPE_CHECK_CREATE_SECGROUP = "create_secgroup"
+ACTION_TYPE_CHECK_CREATE_SUBNET = "create_subnet"
 
 LOG = logging.getLogger(__name__)
 
@@ -935,3 +938,155 @@ class SecurityGroupCreationAction(Action):
                 dest_tenant_id)}
 
         return dest_secgroup
+
+
+class SubnetCreationAction(Action):
+    action_type = ACTION_TYPE_CHECK_CREATE_SUBNET
+    NEW_SUBNET_DESCRIPTION = (
+        "Created by the Coriolis OpenStack utilities for source subnet '%s'.")
+
+    def __init__(self, source_client, destination_client, action_payload):
+        """
+        param action_payload: dict(): payload (params) for the action
+        must contain 'src_network_id',
+                     'dest_network_id',
+                     'source_name'
+        """
+        # NOTE no openstack_client or coriolis_client
+
+        super(SubnetCreationAction, self).__init__(
+            None, None, action_payload)
+        self._source_client = source_client
+        self._destination_client = destination_client
+
+    @property
+    def subnet_name_format(self):
+        return CONF.destination.new_subnet_name_format
+
+    def check_already_done(self):
+        src_tenant_id = self.get_source_tenant_id()
+        src_subnet_name = self.payload['source_name']
+
+        dest_network_id = self.payload['dest_network_id']
+        dest_subnet_name = self.get_new_subnet_name()
+
+        conflicting = subnets.list_subnets(
+            self._destination_client, dest_network_id, dest_subnet_name)
+
+        src_subnet = subnets.get_body(
+            self._source_client, src_tenant_id, src_subnet_name)
+
+        for subnet in conflicting:
+            if subnets.check_subnet_similarity(subnet, src_subnet):
+                LOG.info("Found destination subnet '%s' with same information "
+                         "as source subnet '%s'."
+                         % (dest_subnet_name, src_subnet_name))
+                return {"done": True, "result": subnet['id']}
+
+        if len(conflicting) == 1:
+            raise Exception("Found destination subnet with "
+                            "with name '%s' but different attributes!"
+                            % dest_subnet_name)
+        elif conflicting:
+            raise Exception("Found multiple destination subnets with "
+                            "with name '%s'! Aborting subnet "
+                            "migration." % dest_subnet_name)
+
+        return {"done": False, "result": None}
+
+    def equivalent_to(self, other_action):
+        if other_action.action_type == self.action_type:
+            if self.payload['source_name'] == (
+                    other_action.payload.get('source_name')):
+
+                src_network_id = self.payload['src_network_id']
+                src_other_network_id = (
+                    other_action.payload.get('src_network_id'))
+
+                if src_network_id == src_other_network_id:
+                    dest_network_id = self.payload['dest_network_id']
+                    dest_other_network_id = other_action.payload.get(
+                        'dest_network_id')
+
+                    return dest_network_id == dest_other_network_id
+        return False
+
+    def print_operations(self):
+        super(SubnetCreationAction, self).print_operations()
+        subnet_name = self.get_new_subnet_name()
+        LOG.info(
+            "Create new destination subnet named '%s'." % subnet_name)
+
+    def get_new_subnet_name(self):
+        return self.subnet_name_format % {
+            "original": self.payload["source_name"]}
+
+    def get_source_tenant_id(self):
+        src_subnet_list = subnets.list_subnets(
+            self._source_client, self.payload['src_network_id'],
+            self.payload['source_name'])
+
+        if not src_subnet_list:
+            raise Exception("Source Subnet '%s' in network '%s' not found!"
+                            % (self.payload['source_name'],
+                               self.payload['src_network_id']))
+
+        src_subnet = src_subnet_list[0]
+
+        return (src_subnet.get('tenant_id') or
+                src_subnet.get('project_id'))
+
+    def get_destination_tenant_id(self):
+        dest_network = networks.get_network(
+            self._destination_client, self.payload['dest_network_id'])
+
+        return (dest_network.get('tenant_id') or
+                dest_network.get('project_id'))
+
+    def create_subnet_body(self, description):
+        src_subnet_name = self.payload['source_name']
+        src_tenant_id = self.get_source_tenant_id()
+        dest_tenant_id = self.get_destination_tenant_id()
+        dest_subnet_name = self.get_new_subnet_name()
+        dest_network_id = self.payload['dest_network_id']
+        src_body = subnets.get_body(
+            self._source_client, src_tenant_id, src_subnet_name)
+        body = {'name': dest_subnet_name,
+                'tenant_id': dest_tenant_id,
+                'project_id': dest_tenant_id,
+                'description': description,
+                'network_id': dest_network_id}
+
+        for k in src_body:
+            if k not in body:
+                body[k] = src_body[k]
+
+        return body
+
+    def execute_operations(self):
+        super(SubnetCreationAction, self).print_operations()
+        dest_subnet_name = self.get_new_subnet_name()
+        dest_network_id = self.payload['dest_network_id']
+        done = self.check_already_done()
+        if done["done"]:
+            LOG.info(
+                "Subnet named '%s' already exists.",
+                dest_subnet_name)
+            return done["result"]
+
+        LOG.info("Creating destination Subnet with name '%s'" %
+                 dest_subnet_name)
+        description = (self.NEW_SUBNET_DESCRIPTION %
+                       self.payload['source_name'])
+        body = self.create_subnet_body(description)
+        dest_subnet_id = subnets.create_subnet(
+            self._destination_client, body)
+        dest_network_name = networks.get_network(
+            self._destination_client, dest_network_id)['name']
+        dest_subnet = {
+            'destination_name': dest_subnet_name,
+            'destination_id': dest_subnet_id,
+            'dest_network_id': dest_network_id,
+            'dest_network_name': dest_network_name}
+
+        return dest_subnet

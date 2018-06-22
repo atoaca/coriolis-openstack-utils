@@ -81,6 +81,17 @@ NEW_SECGROUP_NAME_OPT = conf.StrOpt(
     help="String format for security group names on the destination. "
          "Must contain the format string '%(original)s'. "
          "Example: %(original)s-Migrated")
+NEW_SUBNAME_NAME_OPT = conf.StrOpt(
+    "new_subnet_name_format", required=True,
+    help="String format for subnet names on the destination. "
+         "Must contain the format string '%(original)s'. "
+         "Example: %(original)s-Migrated")
+NEW_NETWORK_NAME_OPT = conf.StrOpt(
+    "new_network_name_format", required=True,
+    help="String format for network names on the destination. "
+         "Must contain the format string '%(original)s'. "
+         "Example: %(original)s-Migrated")
+
 
 NEW_TENANT_NEUTRON_QUOTAS_OPT = conf.DictOpt(
     "new_tenant_neutron_quotas", default={"security_group": -1},
@@ -107,7 +118,7 @@ DESTINATION_OPTS = OPENSTACK_CONNECTION_OPTS + [
     NEW_TENANT_NEUTRON_QUOTAS_OPT, NEW_TENANT_CINDER_QUOTAS_OPT,
     NEW_TENANT_NOVA_QUOTAS_OPT, NEW_TENANT_ADMIN_USERS_OPT,
     NEW_TENANT_OPEN_DEFAULT_SECGROUP_OPT, NEW_TENANT_SECGROUP_PROTOCOLS_OPT,
-    NEW_SECGROUP_NAME_OPT]
+    NEW_SECGROUP_NAME_OPT, NEW_SUBNAME_NAME_OPT, NEW_NETWORK_NAME_OPT]
 CONF.register_opts(
     DESTINATION_OPTS, constants.DESTINATION_OPT_GROUP_NAME)
 
