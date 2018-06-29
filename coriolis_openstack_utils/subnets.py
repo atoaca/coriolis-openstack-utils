@@ -2,6 +2,9 @@
 # All Rights Reserved.
 
 
+def get_subnet(openstack_client, subnet_id):
+    return openstack_client.neutron.find_resource_by_id('subnet', subnet_id)
+
 def list_subnets(openstack_client, network_id, name):
     return openstack_client.neutron.list_subnets(
         network_id=network_id, name=name)['subnets']
